@@ -1,6 +1,6 @@
 # barehands
 
-> **Never used Claude Code?** Start at [jaredrhod.com](https://jaredrhod.com): pick your situation and it routes you to the right path.
+> **About this copy:** this is my (abenih's) working copy of [barehands](https://github.com/jaredrhod/barehands), created by Jared Rhodenizer. The board, the server, and most of this README are the original project's. My additions are the reusable gesture engine (`gesture-engine.mjs`), the Gesture Lab (`gesture-lab.html`), and the gesture classifier trainer (`tools/train_gesture_classifier.py`), with tests under `tests/` — see *Gesture Lab* below. Same AGPL-3.0 license; the original author's credits stay in *Credits* and *License* at the bottom.
 
 **Runs on:** a webcam and Chrome; works with any AI. Any program that writes a file or curls localhost can be its brain.
 
@@ -15,14 +15,14 @@ And it's a body waiting for a brain: wire in your AI and the on-screen ring beco
 ## Run it (nothing needed)
 
 ```
-git clone https://github.com/jaredrhod/barehands
+git clone https://github.com/abenih/barehands
 cd barehands
 python3 server.py
 ```
 
 On Windows run `run.bat` instead: a clean Windows 11 has no Python but leaves a Microsoft Store stub on the PATH that looks like one, and `run.bat` finds an interpreter that actually works. Open **http://127.0.0.1:8794/stage.html** in Chrome, allow the camera, and wave. That's the whole install: the server is stdlib Python, and the page loads its hand tracking (Google MediaPipe) and 3D (three.js) from CDNs on first run.
 
-**Already in a Claude Code session with your agent?** One sentence does it all: *"clone https://github.com/jaredrhod/barehands.git, then read barehands/barehands.md and set me up."* Your agent installs it, configures it, and wires itself in.
+**Already in a Claude Code session with your agent?** One sentence does it all: *"clone https://github.com/abenih/barehands.git, then read barehands/barehands.md and set me up."* Your agent installs it, configures it, and wires itself in.
 
 Tap the ring → orbs bloom → tap an orb → your files unfold on glass. The sample notes teach the gestures from inside the board itself.
 
