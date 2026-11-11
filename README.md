@@ -61,6 +61,20 @@ Tap (quick pinch) opens and closes. Pinch-drag moves. Hold still while carrying 
 
 Every threshold was tuned on a real hand across weeks of live use, and because the gates measure hand *shape* as ratios, not size, they hold at any camera distance. The full cheat sheet is on the board: `Getting Started → The Gestures`. If a gesture ever misfires for your hand or setup, [TROUBLESHOOTING.md](TROUBLESHOOTING.md) ships the tuning clinic: the built-in debug overlay and pose sampler, plus the exact method for your AI to fit the gates to *your* hand.
 
+### Gesture Lab
+
+Open **http://127.0.0.1:8794/gesture-lab.html** to calibrate barehands
+for a particular user, export privacy-preserving landmark datasets, and replay
+old recordings against the current rules. The board and lab share the saved
+profile in that browser. Camera images are never included in an export.
+
+The reusable browser-side primitives live in `gesture-engine.mjs`: stable hand
+identity, adaptive pointer filtering, landmark quality scoring, normalized
+feature extraction, calibration, recording, and replay. A dependency-free
+experimental trainer lives at `tools/train_gesture_classifier.py`; its models
+are intentionally marked non-production until evaluated on recordings from
+entirely held-out users.
+
 ## Streaming / recording (advanced)
 
 Two pages, one scene: the tracker page owns your camera; `stage.html?role=render` is a truly transparent mirror of it, built for an OBS browser source: the glass composites over your camera feed with real alpha. `&cursors=0` hides the finger rings (bare-hands sorcery), `&ss=2` renders at 2× for razor-sharp cards, and `?portrait=1` on the tracker flips the whole rig to vertical 9:16 for Shorts and TikTok. `?res=3840x2160` bumps the tracker's capture for a 4K self-view (`1280x720` rescues slow machines); in an OBS rig your broadcast camera is OBS's own source, so tracking happily stays at the default. Details in the sample notes' Field Guide.

@@ -1,0 +1,500 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>barehands gesture lab</title>
+  <style>
+    :root { color-scheme: dark; --ink:#dbfff8; --muted:#89aaa5; --line:#28504b;
+      --glass:rgba(7,22,22,.82); --green:#6fe5d6; --warn:#ffc66d; }
+    * { box-sizing:border-box; }
+    body { margin:0; color:var(--ink); background:#030a0a;
+      font:15px/1.55 Inter,ui-sans-serif,system-ui,sans-serif; }
+    header { position:sticky; top:0; z-index:2; display:flex; gap:16px;
+      align-items:center; justify-content:space-between; padding:16px 24px;
+      border-bottom:1px solid var(--line); background:rgba(3,10,10,.94);
+      backdrop-filter:blur(16px); }
+    h1,h2,h3 { line-height:1.15; margin-top:0; }
+    h1 { margin-bottom:2px; font-size:21px; letter-spacing:.08em; }
+    header p { margin:0; color:var(--muted); }
+    main { width:min(1180px,calc(100% - 32px)); margin:28px auto 80px;
+      display:grid; gap:20px; }
+    .hero,.panel { border:1px solid var(--line); border-radius:18px;
+      background:linear-gradient(145deg,rgba(17,47,44,.72),var(--glass));
+      box-shadow:0 24px 70px rgba(0,0,0,.28); }
+    .hero { padding:30px; display:grid; grid-template-columns:1.2fr .8fr; gap:24px; }
+    .panel { padding:24px; }
+    .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; }
+    .steps { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+    .step { padding:15px; border:1px solid var(--line); border-radius:12px;
+      background:rgba(0,0,0,.18); }
+    .step strong { display:block; color:var(--green); }
+    .video-wrap { position:relative; width:100%; border-radius:14px; overflow:hidden; border:1px solid var(--line); }
+    .video-wrap video { display:block; width:100%; min-height:280px; object-fit:cover; transform:scaleX(-1); border:none; background:#000; }
+    .video-wrap canvas { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+    .rig-controls { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin:12px 0 16px; }
+    .rig-controls label { display:flex; flex-direction:column; gap:4px; font-size:13px; color:var(--muted); }
+    .rig-controls select { appearance:none; background:#0e2926; border:1px solid #3e8d82; color:var(--ink);
+      padding:8px 12px; border-radius:8px; font:inherit; cursor:pointer; }
+    button,.button { appearance:none; border:1px solid #3e8d82; color:var(--ink);
+      background:#123d38; padding:10px 14px; border-radius:10px; font:inherit;
+      cursor:pointer; text-decoration:none; display:inline-block; }
+    button:hover,.button:hover { background:#195149; }
+    button:disabled { opacity:.45; cursor:not-allowed; }
+    .secondary { background:transparent; border-color:var(--line); }
+    .danger { border-color:#8f5a54; background:#482522; }
+    .actions { display:flex; gap:9px; flex-wrap:wrap; margin-top:16px; }
+    .pose-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:9px; }
+    .pose-grid button.active { outline:2px solid var(--green); }
+    #status { min-height:26px; color:var(--warn); }
+    pre { overflow:auto; padding:14px; background:#020707; border-radius:10px;
+      border:1px solid #19332f; color:#aee8df; }
+    table { width:100%; border-collapse:collapse; }
+    th,td { text-align:left; padding:8px; border-bottom:1px solid var(--line); }
+    th { color:var(--muted); }
+    ul { padding-left:20px; }
+    .tag { display:inline-block; padding:2px 8px; border:1px solid var(--line);
+      border-radius:999px; color:var(--green); font-size:12px; }
+    @media(max-width:800px) {
+      .hero,.grid { grid-template-columns:1fr; }
+      .steps,.pose-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+      header { align-items:flex-start; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div><h1>BAREHANDS / GESTURE LAB</h1>
+      <p>Calibrate, measure, replay, and improve without guessing.</p></div>
+    <a class="button secondary" href="stage.html">Open board</a>
+  </header>
+  <main>
+    <section class="hero">
+      <div>
+        <span class="tag">production uses deterministic rules</span>
+        <h2>A reusable workshop for this hand and the next one</h2>
+        <p>This page turns the tuning clinic into a repeatable workflow. It
+          records normalized MediaPipe landmarks, derives conservative
+          per-user thresholds, stores the profile in this browser, exports
+          datasets, and replays old recordings against new rules.</p>
+        <p>No images are uploaded. Camera frames and landmarks remain in this
+          browser unless you explicitly download a dataset.</p>
+      </div>
+      <div class="steps">
+        <div class="step"><strong>1. Capture</strong>Correct poses and confusing impostors.</div>
+        <div class="step"><strong>2. Calibrate</strong>Cut thresholds only where ranges separate.</div>
+        <div class="step"><strong>3. Replay</strong>Check old recordings before shipping changes.</div>
+      </div>
+    </section>
+
+    <div class="grid">
+      <section class="panel">
+        <h2>Camera and capture</h2>
+        <div class="rig-controls">
+          <label>Camera Source:
+            <select id="camera-select">
+              <option value="">Detecting cameras...</option>
+            </select>
+          </label>
+          <label>Hand Orientation / Pose Angle:
+            <select id="orientation-select">
+              <option value="Frontal (Facing Camera)">Frontal (Facing Camera)</option>
+              <option value="Tilted 45° Angle">Tilted 45° Angle</option>
+              <option value="Side Profile (90° Yaw)">Side Profile (90° Yaw / Thumb Front)</option>
+              <option value="Forward Reach (Z-Depth)">Forward Reach (Z-Depth)</option>
+              <option value="High Angle (Downward)">High Angle (Downward View)</option>
+            </select>
+          </label>
+        </div>
+        <div class="video-wrap">
+          <video id="camera" autoplay playsinline muted></video>
+          <canvas id="overlay"></canvas>
+        </div>
+        <p id="status">Select camera & orientation, start camera, then hold each pose for 3 seconds.</p>
+        <div class="pose-grid" id="poses"></div>
+        <div class="actions">
+          <button id="start-camera">Start camera</button>
+          <button id="connect-phone" class="secondary" title="Connect / Reconnect Galaxy S10 via USB">📱 Connect Phone Cam</button>
+          <button id="stop-camera" class="secondary" disabled>Stop camera</button>
+        </div>
+      </section>
+
+      <section class="panel">
+        <h2>Calibration profile</h2>
+        <p>The profile is shared with <code>stage.html</code> through
+          <code>localStorage</code>. Reload the board after applying it.</p>
+        <table><tbody id="counts"></tbody></table>
+        <div class="actions">
+          <button id="apply-profile">Derive and apply profile</button>
+          <button id="reset-profile" class="danger">Reset defaults</button>
+          <button id="export-profile" class="secondary">Export profile</button>
+          <label class="button secondary">Import profile
+            <input id="import-profile" type="file" accept="application/json" hidden>
+          </label>
+        </div>
+        <h3>Current profile</h3>
+        <pre id="profile"></pre>
+      </section>
+
+      <section class="panel">
+        <h2>Dataset and replay</h2>
+        <p>Export normalized landmarks for regression tests or future model
+          training. Import a previous dataset to replay it against the current
+          calibrated rule set.</p>
+        <div class="actions">
+          <button id="export-dataset">Export captured dataset</button>
+          <label class="button secondary">Replay dataset
+            <input id="replay-dataset" type="file" accept="application/json" hidden>
+          </label>
+          <button id="clear-samples" class="danger">Clear captures</button>
+        </div>
+        <pre id="replay">No replay has run.</pre>
+      </section>
+
+      <section class="panel">
+        <h2>Implemented foundations</h2>
+        <ul>
+          <li>Stable IDs match hands by handedness, wrist position, and motion.</li>
+          <li>One Euro filtering smooths still hands without slowing fast motion.</li>
+          <li>Quality scoring rejects impossible geometry and landmark jumps.</li>
+          <li>Dropout grace preserves grabs through brief camera blur.</li>
+          <li>Time-based pinch and claw gates behave consistently across FPS.</li>
+          <li>Per-user profiles calibrate strong, separated feature "canyons."</li>
+          <li>Datasets store landmarks and feature vectors, not camera images.</li>
+          <li>Replay reports per-pose matches and false activations.</li>
+        </ul>
+      </section>
+    </div>
+
+    <section class="panel">
+      <h2>Future improvement roadmap</h2>
+      <div class="steps">
+        <div class="step"><strong>More users</strong>Collect consented datasets across hands, cameras, lighting, skin tones, handedness, and mobility.</div>
+        <div class="step"><strong>Learned classifier</strong>Train on normalized landmark windows, then compare it with the rule engine in shadow mode.</div>
+        <div class="step"><strong>Metrics</strong>Track misses, false activations/hour, latency, hand swaps, and pointer jitter.</div>
+        <div class="step"><strong>Sequence models</strong>Use short temporal windows for movement gestures rather than classifying isolated poses.</div>
+        <div class="step"><strong>Accessible alternatives</strong>Offer configurable substitutes for clap and claw instead of forcing one anatomy or motion range.</div>
+        <div class="step"><strong>Camera adaptation</strong>Measure FPS, blur, exposure, and framing; offer actionable setup guidance before changing thresholds.</div>
+      </div>
+      <h3>Safe classifier rollout</h3>
+      <ol>
+        <li>Export recordings from this page and combine datasets only with permission.</li>
+        <li>Keep entire users, not random frames, outside the training set.</li>
+        <li>Run <code>python tools/train_gesture_classifier.py dataset.json model.json</code>.</li>
+        <li>Evaluate the model in shadow mode without controlling the UI.</li>
+        <li>Adopt it only if it beats calibrated rules on held-out users and false activations per hour.</li>
+      </ol>
+    </section>
+  </main>
+
+  <script type="module">
+    import { HandLandmarker, FilesetResolver } from
+      "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+    import {
+      DEFAULT_PROFILE, LandmarkRecorder, StableHandTracker, deriveProfile,
+      extractHandFeatures, loadGestureProfile, replayDataset,
+      resetGestureProfile, saveGestureProfile
+    } from "./gesture-engine.mjs";
+
+    const poseNames = [
+      ["relaxed", "Relaxed hand"], ["open", "Open palm"],
+      ["pinch", "OK-sign pinch"], ["fist", "Closed fist"],
+      ["claw", "Full claw"], ["point", "Pointing hand"]
+    ];
+    const video = document.querySelector("#camera");
+    const canvas = document.querySelector("#overlay");
+    const ctx = canvas.getContext("2d");
+    const status = document.querySelector("#status");
+    const poseBox = document.querySelector("#poses");
+    const cameraSelect = document.querySelector("#camera-select");
+    const orientationSelect = document.querySelector("#orientation-select");
+    const recorder = new LandmarkRecorder();
+    const samples = [];
+    const tracker = new StableHandTracker();
+    let landmarker = null;
+    let stream = null;
+    let animation = 0;
+    let capture = null;
+    let lastVideoTime = -1;
+
+    const CONNECTIONS = [
+      [0,1],[1,2],[2,3],[3,4],
+      [0,5],[5,6],[6,7],[7,8],
+      [5,9],[9,10],[10,11],[11,12],
+      [9,13],[13,14],[14,15],[15,16],
+      [13,17],[17,18],[18,19],[19,20],[0,17]
+    ];
+
+    async function populateCameras() {
+      try {
+        const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+        cameraSelect.innerHTML = "";
+        let hasSelected = false;
+        devs.forEach((d, i) => {
+          const opt = document.createElement("option");
+          opt.value = d.deviceId;
+          const label = d.label || `Camera ${i + 1}`;
+          opt.textContent = label;
+          if (!hasSelected && !label.toLowerCase().includes("phonestream") && !label.toLowerCase().includes("iriun")) {
+            opt.selected = true;
+            hasSelected = true;
+          }
+          cameraSelect.appendChild(opt);
+        });
+      } catch (err) {
+        console.warn("Could not list cameras:", err);
+      }
+    }
+
+    const download = (name, value) => {
+      const blob = new Blob([JSON.stringify(value, null, 2)],
+        { type: "application/json" });
+      const link = Object.assign(document.createElement("a"), {
+        href: URL.createObjectURL(blob), download: name
+      });
+      link.click();
+      setTimeout(() => URL.revokeObjectURL(link.href), 0);
+    };
+
+    const showProfile = () => {
+      document.querySelector("#profile").textContent =
+        JSON.stringify(loadGestureProfile(), null, 2);
+    };
+
+    const showCounts = () => {
+      let html = "";
+      for (const [key, name] of poseNames) {
+        const poseSamples = samples.filter(s => s.label === key);
+        const total = poseSamples.length;
+        const orientations = [...new Set(poseSamples.map(s => s.orientation || "Standard"))];
+        const breakdown = orientations.map(o => `${o}: ${poseSamples.filter(s => s.orientation === o).length}`).join(", ");
+        html += `<tr><th>${name}</th><td><strong>${total} frames</strong>${breakdown ? `<br><small style="color:var(--muted)">${breakdown}</small>` : ''}</td></tr>`;
+      }
+      document.querySelector("#counts").innerHTML = html;
+    };
+
+    for (const [key, name] of poseNames) {
+      const button = document.createElement("button");
+      button.textContent = `Capture ${name}`;
+      button.disabled = true;
+      button.addEventListener("click", () => {
+        if (capture) return;
+        capture = { label: key, until: performance.now() + 3000, button };
+        button.classList.add("active");
+        status.textContent = `Hold ${name} (${orientationSelect.value}) steadily for 3 seconds...`;
+      });
+      poseBox.append(button);
+    }
+
+    function drawOverlay(hand, now) {
+      if (canvas.width !== video.videoWidth || canvas.height !== video.videoHeight) {
+        canvas.width = video.videoWidth || 640;
+        canvas.height = video.videoHeight || 480;
+      }
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!hand) return;
+
+      const w = canvas.width, h = canvas.height;
+      // Video is mirrored via scaleX(-1), so canvas maps (1 - pt.x) to match
+      ctx.strokeStyle = "rgba(111, 229, 214, 0.85)";
+      ctx.lineWidth = 3;
+      for (const [a, b] of CONNECTIONS) {
+        const p1 = hand.landmarks[a], p2 = hand.landmarks[b];
+        ctx.beginPath();
+        ctx.moveTo((1 - p1.x) * w, p1.y * h);
+        ctx.lineTo((1 - p2.x) * w, p2.y * h);
+        ctx.stroke();
+      }
+
+      for (const pt of hand.landmarks) {
+        ctx.beginPath();
+        ctx.arc((1 - pt.x) * w, pt.y * h, 4.5, 0, 2 * Math.PI);
+        ctx.fillStyle = "#8ff0e4";
+        ctx.fill();
+      }
+
+      if (capture) {
+        const remain = Math.max(0, (capture.until - now) / 1000);
+        const progress = Math.max(0, Math.min(1, 1 - (capture.until - now) / 3000));
+        ctx.fillStyle = "rgba(0, 0, 0, 0.78)";
+        ctx.fillRect(16, h - 54, w - 32, 38);
+        ctx.fillStyle = "#6fe5d6";
+        ctx.fillRect(18, h - 52, (w - 36) * progress, 34);
+        ctx.fillStyle = "#031412";
+        ctx.font = "bold 14px 'SF Mono', Menlo, monospace";
+        ctx.fillText(`CAPTURING ${capture.label.toUpperCase()} [${orientationSelect.value}]: ${remain.toFixed(1)}s`, 28, h - 30);
+      }
+    }
+
+    async function startCamera(deviceId = null) {
+      status.textContent = "Loading MediaPipe hand tracker...";
+      if (!landmarker) {
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
+        landmarker = await HandLandmarker.createFromOptions(vision, {
+          baseOptions: {
+            modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+            delegate: "GPU"
+          },
+          numHands: 2,
+          runningMode: "VIDEO",
+          minHandDetectionConfidence: 0.7,
+          minHandPresenceConfidence: 0.5
+        });
+      }
+
+      if (stream) stream.getTracks().forEach(track => track.stop());
+      const selectedId = deviceId || cameraSelect.value;
+      const videoConstraints = { width: { ideal: 1280 }, height: { ideal: 720 } };
+      if (selectedId) videoConstraints.deviceId = { exact: selectedId };
+
+      stream = await navigator.mediaDevices.getUserMedia({
+        video: videoConstraints, audio: false
+      });
+      video.srcObject = stream;
+      await video.play();
+      await populateCameras();
+
+      document.querySelectorAll("#poses button").forEach(b => b.disabled = false);
+      document.querySelector("#start-camera").disabled = true;
+      document.querySelector("#stop-camera").disabled = false;
+      const curCamName = cameraSelect.options[cameraSelect.selectedIndex]?.text || "Selected Camera";
+      status.textContent = `Camera active: ${curCamName}. Select orientation and capture each pose.`;
+      frame();
+    }
+
+    function stopCamera() {
+      cancelAnimationFrame(animation);
+      stream?.getTracks().forEach(track => track.stop());
+      stream = null;
+      video.srcObject = null;
+      capture = null;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      document.querySelectorAll("#poses button").forEach(b => b.disabled = true);
+      document.querySelector("#start-camera").disabled = false;
+      document.querySelector("#stop-camera").disabled = true;
+      status.textContent = "Camera stopped.";
+    }
+
+    cameraSelect.addEventListener("change", () => {
+      if (stream) startCamera(cameraSelect.value);
+    });
+
+    function frame() {
+      const now = performance.now();
+      if (video.currentTime !== lastVideoTime) {
+        lastVideoTime = video.currentTime;
+        const result = landmarker.detectForVideo(video, now);
+        const detections = (result.landmarks || []).map((landmarks, index) => ({
+          landmarks, handedness: result.handednesses?.[index]
+        }));
+        const hands = tracker.update(detections, now);
+        const activeHand = hands[0];
+        drawOverlay(activeHand, now);
+
+        if (capture && activeHand) {
+          const hand = activeHand;
+          const features = extractHandFeatures(hand.landmarks);
+          if (features.quality >= DEFAULT_PROFILE.minQuality) {
+            const orientation = orientationSelect.value;
+            const cameraName = cameraSelect.options[cameraSelect.selectedIndex]?.text || "Camera";
+            const sample = {
+              label: capture.label,
+              orientation,
+              camera: cameraName,
+              handedness: hand.handedness,
+              landmarks: hand.landmarks.map(p => ({ x:p.x, y:p.y, z:p.z || 0 })),
+              features
+            };
+            samples.push(sample);
+            recorder.add({
+              label: capture.label,
+              orientation,
+              camera: cameraName,
+              landmarks: hand.landmarks,
+              handedness: hand.handedness,
+              nowMs: now
+            });
+          }
+          if (now >= capture.until) {
+            capture.button.classList.remove("active");
+            status.textContent = `Captured ${capture.label} [${orientationSelect.value}]. Next orientation or pose.`;
+            capture = null;
+            showCounts();
+          }
+        } else if (capture && now >= capture.until) {
+          capture.button.classList.remove("active");
+          status.textContent = "No reliable hand visible. Try holding hand in clear view.";
+          capture = null;
+        }
+      }
+      animation = requestAnimationFrame(frame);
+    }
+
+    document.querySelector("#connect-phone").addEventListener("click", async () => {
+      status.textContent = "Connecting Galaxy S10 via USB...";
+      try {
+        await fetch("/camera/connect?angle=90");
+        setTimeout(async () => {
+          await populateCameras();
+          const phoneOpt = Array.from(cameraSelect.options).find(o => o.text.toLowerCase().includes("phonestream"));
+          if (phoneOpt) {
+            cameraSelect.value = phoneOpt.value;
+            await startCamera(phoneOpt.value);
+            status.textContent = "Galaxy S10 connected and streaming!";
+          } else {
+            status.textContent = "Phone signal received. Select it from the camera dropdown.";
+          }
+        }, 2200);
+      } catch (e) {
+        status.textContent = `Phone connect error: ${e.message}`;
+      }
+    });
+
+    document.querySelector("#start-camera").addEventListener("click", () =>
+      startCamera().catch(error => status.textContent = `Camera failed: ${error.message}`));
+    document.querySelector("#stop-camera").addEventListener("click", stopCamera);
+    document.querySelector("#apply-profile").addEventListener("click", () => {
+      if (!samples.some(s => s.label === "pinch") ||
+          !samples.some(s => s.label === "fist") ||
+          !samples.some(s => s.label === "relaxed")) {
+        status.textContent = "Capture pinch, fist, and relaxed poses before calibrating.";
+        return;
+      }
+      saveGestureProfile(deriveProfile(samples, loadGestureProfile()));
+      showProfile();
+      status.textContent = "Profile applied. Reload the board to use it.";
+    });
+    document.querySelector("#reset-profile").addEventListener("click", () => {
+      resetGestureProfile(); showProfile();
+      status.textContent = "Default profile restored.";
+    });
+    document.querySelector("#export-profile").addEventListener("click", () =>
+      download("barehands-gesture-profile.json", loadGestureProfile()));
+    document.querySelector("#import-profile").addEventListener("change", async event => {
+      const profile = JSON.parse(await event.target.files[0].text());
+      saveGestureProfile(profile); showProfile();
+      status.textContent = "Imported profile applied. Reload the board.";
+    });
+    document.querySelector("#export-dataset").addEventListener("click", () => {
+      const dataset = recorder.export({ source:"gesture-lab", sampleCount:samples.length });
+      download(`barehands-landmarks-${Date.now()}.json`, dataset);
+    });
+    document.querySelector("#replay-dataset").addEventListener("change", async event => {
+      try {
+        const dataset = JSON.parse(await event.target.files[0].text());
+        document.querySelector("#replay").textContent =
+          JSON.stringify(replayDataset(dataset, loadGestureProfile()), null, 2);
+      } catch (error) {
+        document.querySelector("#replay").textContent = `Replay failed: ${error.message}`;
+      }
+    });
+    document.querySelector("#clear-samples").addEventListener("click", () => {
+      samples.length = 0; recorder.start(); showCounts();
+      status.textContent = "Captured samples cleared.";
+    });
+    showProfile();
+    showCounts();
+  </script>
+</body>
+</html>

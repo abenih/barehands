@@ -24,6 +24,11 @@ barehands ships the same two instruments its gestures were originally tuned with
 
 - **D: the debug overlay.** Press `D` on the tracker page. Live per-frame telemetry: fps, hand count, the pinch ratio and its state, claw/palm flags, and a `fpDbg` line with the raw gate metrics.
 - **P: the omni-sampler.** Press `P`, then hold ONE pose steadily in frame for 4 seconds. It records every gate metric across the window and toasts two summary lines (each value as `min–median–max`):
+- **G: the Gesture Lab.** Press `G` on the tracker page, or open
+  `http://127.0.0.1:8794/gesture-lab.html`. It captures labeled landmark
+  datasets, derives a conservative per-user profile, exports/imports that
+  profile, and replays old recordings against the current pose rules. Reload
+  the tracker page after applying a profile. Camera images are never exported.
 
 ```
 CLAW  r <…> · c8 <…> · c12 <…> · c16 <…> · c20 <…> · s <…> · a <…>

@@ -51,6 +51,7 @@ Your AI drives the ring by writing tiny files into ./state/ :
 Missing files are fine — the ring just idles.
 """
 import json
+import subprocess
 import time
 import urllib.parse
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -60,7 +61,7 @@ HERE = Path(__file__).resolve().parent
 
 
 def load_config():
-    cfg = {"name": "Assistant", "port": 8794, "orbs": [],
+    cfg = {"name": "Assistant", "host": "0.0.0.0", "port": 8794, "orbs": [],
            # Seconds before a non-idle ring state is treated as stale and
            # shown as idle. Only ever rescues a writer that died without
            # saying goodbye; see the note in /orb.
@@ -152,7 +153,8 @@ class Handler(SimpleHTTPRequestHandler):
     def end_headers(self):
         # no-store on the page itself so a plain reload always serves
         # current code (Chrome happily caches through reloads otherwise)
-        if self.path.split("?")[0].endswith("stage.html"):
+        if self.path.split("?")[0].endswith(
+                ("stage.html", "gesture-lab.html", "gesture-engine.mjs")):
             self.send_header("Cache-Control", "no-store")
         super().end_headers()
 
@@ -220,6 +222,30 @@ class Handler(SimpleHTTPRequestHandler):
         self.end_headers()
 
     def do_GET(self):
+        if self.path.startswith("/camera/status"):
+            has_phone = False
+            try:
+                r = subprocess.run(["/usr/bin/adb", "devices"], capture_output=True, text=True, timeout=2)
+                has_phone = "RF8M32Y2VVL" in r.stdout
+            except Exception:
+                pass
+            streaming = False
+            try:
+                sc = subprocess.run(["/usr/bin/pgrep", "-f", "scrcpy.*video10"], capture_output=True, text=True)
+                streaming = sc.returncode == 0
+            except Exception:
+                pass
+            self._json({"phone_connected": has_phone, "streaming": streaming})
+            return
+        if self.path.startswith("/camera/connect"):
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            angle = q.get("angle", ["90"])[0]
+            try:
+                subprocess.run(["systemctl", "--user", "restart", "s10-webcam.service"], timeout=5)
+            except Exception as e:
+                pass
+            self._json({"status": "connecting", "angle": angle})
+            return
         if self.path == "/config":
             # the page builds its ring name + orb bloom from this
             self._json({"name": CONFIG.get("name", "Assistant"),
@@ -384,9 +410,37 @@ class Handler(SimpleHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    import argparse
+    import socket
+
+    parser = argparse.ArgumentParser(description="barehands server")
+    parser.add_argument("--host", default=CONFIG.get("host", "0.0.0.0"),
+                        help="Host to bind to (default: 0.0.0.0 or from barehands.json)")
+    parser.add_argument("--global", "-g", dest="is_global", action="store_true",
+                        help="Bind globally to 0.0.0.0")
+    parser.add_argument("--local", "-l", dest="is_local", action="store_true",
+                        help="Bind locally to 127.0.0.1 only")
+    parser.add_argument("--port", "-p", type=int, default=int(CONFIG.get("port", 8794)),
+                        help="Port to listen on (default: 8794)")
+    args = parser.parse_args()
+
+    if args.is_local:
+        host = "127.0.0.1"
+    elif args.is_global:
+        host = "0.0.0.0"
+    else:
+        host = args.host
+    port = args.port
+
     (HERE / "state").mkdir(exist_ok=True)   # the ring's runtime files land here
-    port = int(CONFIG.get("port", 8794))
     print(f"barehands up: http://127.0.0.1:{port}/stage.html", flush=True)
+    if host == "0.0.0.0":
+        try:
+            lan_ip = socket.gethostbyname(socket.gethostname())
+            print(f"  global/LAN:       http://{lan_ip}:{port}/stage.html", flush=True)
+        except Exception:
+            pass
     print("  tracker (camera): open that URL in Chrome", flush=True)
     print("  render (overlay): same URL + ?role=render", flush=True)
-    ThreadingHTTPServer(("127.0.0.1", port), Handler).serve_forever()
+    print(f"  gesture lab:      http://127.0.0.1:{port}/gesture-lab.html", flush=True)
+    ThreadingHTTPServer((host, port), Handler).serve_forever()

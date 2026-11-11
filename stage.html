@@ -67,7 +67,11 @@ SPDX-License-Identifier: AGPL-3.0-or-later
       0 0 calc(24px + var(--ch)*70px) rgba(111,229,214,calc(0.10 + var(--ch)*0.75)),
       inset 0 1px 0 rgba(191,255,245,0.35); }
   #cam { position:absolute; inset:0; width:100%; height:100%; object-fit:cover;
-         transform:scaleX(-1); }
+         transform:scaleX(-1); transition:transform 0.25s ease; }
+  #cam.phone-zoom {
+    transform:scaleX(-1) scale(3.16);
+    transform-origin:center center;
+  }
   body.overlay #cam, body.keybg #cam {
          width:2px; height:2px; opacity:0.01; pointer-events:none; }
   /* THE GLASS ERA (2026-08-13, Jared's redesign): clean CLEAR glass —
@@ -241,6 +245,60 @@ SPDX-License-Identifier: AGPL-3.0-or-later
           justify-content:center; color:#8ff0e4; text-align:center;
           font:16px "SF Mono",Menlo,monospace; z-index:1000; background:#000;
           flex-direction:column; gap:12px; }
+
+  /* 3D Multi-Camera & Fullscreen HUD */
+  .cursor.fused-3d {
+    box-shadow: 0 0 0 3px rgba(0, 229, 255, 0.45), 0 0 24px rgba(140, 240, 225, 0.85);
+  }
+  .cursor.fused-3d::after {
+    content: "3D"; position: absolute; top: -18px; right: -8px;
+    font: 9px "SF Mono",Menlo,monospace; color: #8ff0e4;
+    background: rgba(0,0,0,0.7); padding: 1px 4px; border-radius: 4px;
+    border: 1px solid rgba(111,229,214,0.5); pointer-events: none;
+  }
+  #multicam-hud {
+    position: fixed; top: 12px; left: 12px; z-index: 997;
+    display: flex; flex-direction: column; gap: 8px; user-select: none;
+  }
+  .hud-top { display: flex; align-items: center; gap: 8px; }
+  .hud-pill {
+    background: rgba(14, 40, 36, 0.78); border: 1px solid rgba(111, 229, 214, 0.45);
+    color: #8ff0e4; padding: 6px 12px; border-radius: 8px;
+    font: 12px "SF Mono",Menlo,monospace; letter-spacing: 0.04em;
+    backdrop-filter: blur(8px);
+  }
+  .hud-btn {
+    background: rgba(20, 60, 54, 0.72); border: 1px solid rgba(140, 240, 225, 0.55);
+    color: #ecfffa; padding: 6px 12px; border-radius: 8px;
+    font: 12px "SF Mono",Menlo,monospace; cursor: pointer;
+    transition: all 0.2s ease; backdrop-filter: blur(8px);
+  }
+  .hud-btn:hover {
+    background: rgba(40, 110, 100, 0.9); border-color: #8ff0e4;
+    color: #fff; box-shadow: 0 0 12px rgba(111, 229, 214, 0.45);
+  }
+  .hud-cams { display: flex; gap: 8px; }
+  .hud-cams.hidden { display: none; }
+  .hud-cam-card {
+    width: 140px; border-radius: 8px; background: rgba(10, 26, 24, 0.85);
+    border: 1.5px solid rgba(111, 229, 214, 0.3); overflow: hidden;
+    backdrop-filter: blur(6px); cursor: pointer; transition: border-color 0.2s;
+  }
+  .hud-cam-card:hover { border-color: rgba(140, 240, 225, 0.8); }
+  .hud-cam-card.primary {
+    border-color: #8ff0e4; box-shadow: 0 0 12px rgba(111, 229, 214, 0.35);
+  }
+  .hud-cam-card video {
+    width: 100%; height: 80px; object-fit: cover; display: block;
+    transform: scaleX(-1); background: #000;
+  }
+  .hud-cam-label {
+    padding: 3px 6px; font: 10px "SF Mono",Menlo,monospace;
+    color: #dcf5ee; background: rgba(0, 0, 0, 0.65);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .hud-cam-label .cam-badge { color: #8ff0e4; font-weight: bold; }
 </style>
 <script type="importmap">
 { "imports": {
@@ -285,13 +343,27 @@ setTimeout(function () {
 <video id="cam" autoplay playsinline muted></video>
 <div id="behind"></div>
 <div id="boot">BAREHANDS<br><span style="color:#a8d8cf;font-size:12px;letter-spacing:0.22em">by jaredrhod</span><br><span style="color:#a8d8cf;font-size:13px">loading hand tracker… allow the camera when asked</span></div>
-<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · R respawn / C camera / D debug</div>
+<div id="hint">tap the RING = orbs · tap an orb = its tree · TAP a card = open · pinch-drag = move · hold still ~1s = 3D rotate · two hands = scale · TAP an open item = close · CLAP (palms together, fingers up) = ring center-stage · CLAW: flash open, claw, aim, hold the strain 2s, SNAP = force pull · empty pinch dragged sideways = explode scrub · R respawn · C cycle cam · F fullscreen · Z fill/crop · M multi-cam HUD · D debug · G gesture lab</div>
+<div id="multicam-hud">
+  <div class="hud-top">
+    <span class="hud-pill hud-status" id="hud-status">3D FUSION: INITIALIZING...</span>
+    <button id="btn-fullscreen" class="hud-btn" title="Toggle Fullscreen (F)">⛶ FULLSCREEN (F)</button>
+    <button id="btn-zoom" class="hud-btn" title="Toggle Crop-Fill (Z) to eliminate black borders">🔍 FILL (Z)</button>
+    <button id="btn-phone" class="hud-btn" title="Connect / Reconnect Phone Camera">📱 PHONE</button>
+    <button id="btn-hud-toggle" class="hud-btn" title="Toggle Camera Previews (M)">CAMS (M)</button>
+  </div>
+  <div class="hud-cams" id="hud-cam-container"></div>
+</div>
 <div id="debug"></div>
 <div id="toast"></div>
 
 <script type="module">
 import { HandLandmarker, FilesetResolver } from
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/vision_bundle.mjs";
+import {
+  AdaptivePointFilter, DynamicPinchGate, MultiCameraFusion,
+  StableHandTracker, extractHandFeatures, loadGestureProfile
+} from "./gesture-engine.mjs";
 
 // modes: ?mode=mirror (default, self-view) | overlay (transparent — OBS
 // browser sources can't open cameras reliably on macOS, kept for browsers
@@ -341,6 +413,10 @@ let SAMPLER = null;    // the pose sampler (dormant — claw/pinch tuning)
 let CLAPSAMP = null;   // the P clap recorder (v3.9.1)
 let SAMPLED = "";      // its frozen last result (D overlay)
 let landmarker = null, lastVideoTs = -1, frames = 0, fps = 0, lastFpsTs = performance.now();
+const GESTURE_PROFILE = loadGestureProfile();
+const stableHands = new StableHandTracker({
+  graceMs: GESTURE_PROFILE.dropoutGraceMs
+});
 
 let UID = 1;
 
@@ -1567,74 +1643,291 @@ function toast(msg, ms = 2500) {
   t._h = setTimeout(() => t.style.display = "none", ms);
 }
 
-// ---- camera selection: ?cam=<label substring> > saved choice > default.
-// C cycles live. Multiple cameras are the RIG DESIGN: track on a second
-// camera mounted at the main lens while OBS films with the first — no
-// device contention, ever (Jared's multi-cam question, 2026-08-07).
+// ---- 3D MULTI-CAMERA RIG & CONSENSUS FUSION
+// Concurrent capture across all connected cameras (phone + webcams),
+// computing multi-view 3D consensus landmarks, spatial depth awareness,
+// and complete occlusion resilience.
 let camDevices = [], camIdx = -1;
+let multiCamRig = []; // array of { id, label, video, stream, landmarker, lastTs, isPrimary, handCount }
+let primaryCamIdx = 0;
+let visionInstance = null;
+const multiCamFusion = new MultiCameraFusion({ minQuality: GESTURE_PROFILE.multiCamMinQuality });
 
-async function startCam(deviceId) {
-  if (cam.srcObject) cam.srcObject.getTracks().forEach(t => t.stop());
+async function createCameraLandmarker(vision) {
+  return await HandLandmarker.createFromOptions(vision, {
+    baseOptions: {
+      modelAssetPath: "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
+      delegate: "GPU"
+    },
+    numHands: 2,
+    runningMode: "VIDEO",
+    minHandDetectionConfidence: 0.7,
+    minHandPresenceConfidence: 0.5,
+    minTrackingConfidence: 0.5
+  });
+}
+
+function updateMultiCamHud() {
+  const container = document.getElementById("hud-cam-container");
+  const statusEl = document.getElementById("hud-status");
+  if (!container || !statusEl) return;
+  container.innerHTML = "";
+
+  const activeCount = multiCamRig.length;
+  statusEl.textContent = `3D FUSION: ${activeCount} ${activeCount === 1 ? 'CAM' : 'CAMS ACTIVE'}`;
+
+  multiCamRig.forEach((camEntry, idx) => {
+    const card = document.createElement("div");
+    card.className = "hud-cam-card" + (camEntry.isPrimary ? " primary" : "");
+    card.title = `Click to make ${camEntry.label} primary view`;
+
+    const vidThumb = document.createElement("video");
+    vidThumb.autoplay = true;
+    vidThumb.playsInline = true;
+    vidThumb.muted = true;
+    vidThumb.srcObject = camEntry.stream;
+
+    const label = document.createElement("div");
+    label.className = "hud-cam-label";
+    const shortLabel = camEntry.label.replace(/(platform:|usb-).*$/, "").trim();
+    label.innerHTML = `<span>${escT(shortLabel)}</span><span class="cam-badge" id="hud-badge-${idx}">${camEntry.isPrimary ? 'MAIN' : '3D'}</span>`;
+
+    card.appendChild(vidThumb);
+    card.appendChild(label);
+    card.onclick = () => switchPrimaryCam(idx);
+    container.appendChild(card);
+  });
+}
+
+async function initMultiCameraRig(vision) {
+  visionInstance = vision;
   const IW = PORTRAIT ? Math.min(...RES) : Math.max(...RES);
   const IH = PORTRAIT ? Math.max(...RES) : Math.min(...RES);
-  const video = { width: { ideal: IW }, height: { ideal: IH } };
-  if (deviceId) video.deviceId = { exact: deviceId };
-  let stream = null;
+
+  // 1. Initial permission probe
+  let initStream = null;
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    initStream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: IW }, height: { ideal: IH } },
+      audio: false
+    });
   } catch (e) {
-    // THE RESILIENT BOOT (2026-08-13 night — the tracking camera
-    // powered down off the bus and the failed default request bricked
-    // the ENTIRE stage boot): one dead camera must never kill the
-    // show. Fall through every camera the OS still offers and take
-    // the first that opens; only die if NONE do. C still cycles.
-    const devs = (await navigator.mediaDevices.enumerateDevices())
-      .filter(d => d.kind === "videoinput");
-    for (const d of devs) {
-      try {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { deviceId: { exact: d.deviceId },
-                   width: { ideal: IW }, height: { ideal: IH } },
-          audio: false });
-        break;
-      } catch (e2) {}
+    console.warn("Camera probe error:", e);
+  }
+
+  // 2. Discover all video input devices
+  const devs = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === "videoinput");
+  camDevices = devs;
+
+  const uniqueDevs = [];
+  const seenLabels = new Set();
+  for (const d of devs) {
+    const label = d.label || d.deviceId;
+    if (!seenLabels.has(label)) {
+      seenLabels.add(label);
+      uniqueDevs.push(d);
     }
-    if (!stream) throw e;
   }
-  cam.srcObject = stream;
-  await new Promise(r => cam.onloadedmetadata = r);
-  camDevices = (await navigator.mediaDevices.enumerateDevices())
-    .filter(d => d.kind === "videoinput");
-  const live = stream.getVideoTracks()[0];
-  camIdx = camDevices.findIndex(d => d.label === live.label);
-  toast(`camera: ${live.label || "default"}`);
-}
 
-async function pickInitialCam() {
-  // permission first (labels are blank until granted), then re-pick by name
-  await startCam(null);
-  const want = Q.get("cam") || localStorage.getItem("stage-cam") || "";
+  function waitForVideoReady(videoEl, timeoutMs = 2000) {
+    return new Promise((resolve, reject) => {
+      if (videoEl.readyState >= 2) return resolve();
+      const timer = setTimeout(() => {
+        cleanup();
+        reject(new Error("Camera stream metadata timeout"));
+      }, timeoutMs);
+      function onLoaded() {
+        cleanup();
+        resolve();
+      }
+      function cleanup() {
+        clearTimeout(timer);
+        videoEl.removeEventListener("loadedmetadata", onLoaded);
+      }
+      videoEl.addEventListener("loadedmetadata", onLoaded);
+    });
+  }
+
+  // 3. Determine primary camera
+  const want = (Q.get("cam") || localStorage.getItem("stage-cam") || "").toLowerCase();
+  let candidateIndices = [];
   if (want) {
-    const hit = camDevices.find(d =>
-      d.label.toLowerCase().includes(want.toLowerCase()) || d.deviceId === want);
-    if (hit && camDevices[camIdx] !== hit) await startCam(hit.deviceId);
+    const hitIdx = uniqueDevs.findIndex(d =>
+      d.label.toLowerCase().includes(want) || d.deviceId === want);
+    if (hitIdx >= 0) candidateIndices.push(hitIdx);
+  }
+  // Prefer real physical webcam first (laptop/USB)
+  const realIdx = uniqueDevs.findIndex(d =>
+    !d.label.toLowerCase().includes("phonestream") &&
+    !d.label.toLowerCase().includes("iriun") &&
+    !d.label.toLowerCase().includes("loopback"));
+  if (realIdx >= 0 && !candidateIndices.includes(realIdx)) candidateIndices.push(realIdx);
+  uniqueDevs.forEach((_, i) => { if (!candidateIndices.includes(i)) candidateIndices.push(i); });
+
+  // Clear existing
+  for (const c of multiCamRig) {
+    if (c.stream) c.stream.getTracks().forEach(t => t.stop());
+    if (c.video && c.video !== cam) c.video.remove();
+  }
+  multiCamRig = [];
+
+  // 4. Start primary camera on #cam
+  let primaryDev = null;
+  for (const idx of candidateIndices) {
+    const dev = uniqueDevs[idx];
+    try {
+      const primaryStream = (initStream && dev.deviceId === uniqueDevs[0]?.deviceId)
+        ? initStream
+        : await navigator.mediaDevices.getUserMedia({
+            video: { deviceId: { exact: dev.deviceId }, width: { ideal: IW }, height: { ideal: IH } },
+            audio: false
+          });
+      cam.srcObject = primaryStream;
+      await waitForVideoReady(cam, 2000);
+      const primaryLm = await createCameraLandmarker(vision);
+      multiCamRig.push({
+        id: dev.deviceId,
+        label: dev.label || "Primary Camera",
+        video: cam,
+        stream: primaryStream,
+        landmarker: primaryLm,
+        lastTs: -1,
+        isPrimary: true,
+        handCount: 0
+      });
+      primaryCamIdx = 0;
+      primaryDev = dev;
+      break;
+    } catch (e) {
+      console.warn("Could not start primary camera:", dev.label, e);
+    }
+  }
+
+  // 5. Open remaining cameras as concurrent auxiliary depth/consensus streams
+  for (let i = 0; i < uniqueDevs.length; i++) {
+    const d = uniqueDevs[i];
+    if (primaryDev && d.deviceId === primaryDev.deviceId) continue;
+    try {
+      const auxStream = await navigator.mediaDevices.getUserMedia({
+        video: { deviceId: { exact: d.deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } },
+        audio: false
+      });
+      const auxVid = document.createElement("video");
+      auxVid.autoplay = true;
+      auxVid.playsInline = true;
+      auxVid.muted = true;
+      auxVid.srcObject = auxStream;
+      auxVid.style.display = "none";
+      document.body.appendChild(auxVid);
+      await waitForVideoReady(auxVid, 2000);
+      const auxLm = await createCameraLandmarker(vision);
+      multiCamRig.push({
+        id: d.deviceId,
+        label: d.label || `Camera ${multiCamRig.length + 1}`,
+        video: auxVid,
+        stream: auxStream,
+        landmarker: auxLm,
+        lastTs: -1,
+        isPrimary: false,
+        handCount: 0
+      });
+    } catch (e2) {
+      console.warn("Aux camera skipped:", d.label, e2);
+    }
+  }
+
+  updateMultiCamHud();
+  const mainLabel = multiCamRig[0]?.label || "default";
+  toast(`Camera active: ${mainLabel} (${multiCamRig.length} active)`, 3000);
+}
+
+function switchPrimaryCam(targetRigIdx) {
+  if (targetRigIdx < 0 || targetRigIdx >= multiCamRig.length) return;
+  if (primaryCamIdx === targetRigIdx) return;
+
+  const oldPrimary = multiCamRig[primaryCamIdx];
+  const newPrimary = multiCamRig[targetRigIdx];
+
+  oldPrimary.isPrimary = false;
+  newPrimary.isPrimary = true;
+  primaryCamIdx = targetRigIdx;
+
+  cam.srcObject = newPrimary.stream;
+  localStorage.setItem("stage-cam", newPrimary.id);
+  updateMultiCamHud();
+  toast(`Primary camera: ${newPrimary.label}`, 2000);
+}
+
+function cycleCam() {
+  if (multiCamRig.length < 2) { toast("only one camera available"); return; }
+  const nextIdx = (primaryCamIdx + 1) % multiCamRig.length;
+  switchPrimaryCam(nextIdx);
+}
+
+function toggleFullscreen() {
+  if (!document.fullscreenElement) {
+    document.documentElement.requestFullscreen().catch(() => {});
+  } else {
+    document.exitFullscreen().catch(() => {});
   }
 }
 
-async function cycleCam() {
-  if (camDevices.length < 2) { toast("only one camera found"); return; }
-  const next = camDevices[(camIdx + 1) % camDevices.length];
-  await startCam(next.deviceId);
-  localStorage.setItem("stage-cam", next.deviceId);
-  lastVideoTs = -1;
+function toggleMultiCamHud() {
+  const container = document.getElementById("hud-cam-container");
+  if (!container) return;
+  container.classList.toggle("hidden");
+  toast(container.classList.contains("hidden") ? "Camera previews hidden" : "Camera previews visible", 1200);
 }
+
+let phoneZoomActive = false;
+
+function togglePhoneZoom() {
+  phoneZoomActive = !phoneZoomActive;
+  cam.classList.toggle("phone-zoom", phoneZoomActive);
+  const zoomBtn = document.getElementById("btn-zoom");
+  if (zoomBtn) zoomBtn.classList.toggle("active", phoneZoomActive);
+  toast(phoneZoomActive ? "Phone Crop-Fill ON (black borders eliminated)" : "Standard view", 1500);
+}
+
+async function triggerPhoneConnect() {
+  toast("Connecting Galaxy S10 camera...", 2000);
+  try {
+    await fetch("/camera/connect?angle=90");
+    setTimeout(async () => {
+      if (visionInstance) await initMultiCameraRig(visionInstance);
+    }, 2500);
+  } catch (err) {
+    toast("Could not connect phone: " + err.message, 3000);
+  }
+}
+
+// Bind fullscreen, zoom, phone, and hud buttons
+window.addEventListener("DOMContentLoaded", () => {
+  const fsBtn = document.getElementById("btn-fullscreen");
+  if (fsBtn) fsBtn.onclick = toggleFullscreen;
+  const zoomBtn = document.getElementById("btn-zoom");
+  if (zoomBtn) zoomBtn.onclick = togglePhoneZoom;
+  const phoneBtn = document.getElementById("btn-phone");
+  if (phoneBtn) phoneBtn.onclick = triggerPhoneConnect;
+  const hudBtn = document.getElementById("btn-hud-toggle");
+  if (hudBtn) hudBtn.onclick = toggleMultiCamHud;
+});
+
+// Double click anywhere on empty stage to toggle fullscreen
+document.addEventListener("dblclick", e => {
+  if (e.target === document.body || e.target === cam || e.target.id === "behind") {
+    toggleFullscreen();
+  }
+});
 
 addEventListener("keydown", e => {
-  // live respawn: re-read the notes AND props trees from disk before
-  // redrawing — a freshly dropped file appears on a plain R press
+  if (e.key === "f" || e.key === "F") toggleFullscreen();
+  if (e.key === "z" || e.key === "Z") togglePhoneZoom();
+  if (e.key === "m" || e.key === "M") toggleMultiCamHud();
   if (e.key === "r" || e.key === "R") loadTree().then(() => spawnStage());
   if (e.key === "d" || e.key === "D") dbg.style.display = dbg.style.display === "block" ? "none" : "block";
   if (e.key === "c" || e.key === "C") cycleCam();
+  if (e.key === "g" || e.key === "G") location.href = "gesture-lab.html";
   if (e.key === "p" || e.key === "P") {
     SAMPLER = { until: performance.now() + 4000, r: [], h8: [], h12: [], h16: [], h20: [], s: [], a: [] };
     toast("OMNI sampler: hold the pose for 4 seconds…", 4000);
@@ -1642,7 +1935,17 @@ addEventListener("keydown", e => {
 });
 
 function toScreen(lm) {
-  const vw = cam.videoWidth, vh = cam.videoHeight;
+  if (phoneZoomActive && multiCamRig[primaryCamIdx]?.label.toLowerCase().includes("phonestream")) {
+    // 9:16 portrait padded in 16:9 frame -> active width is 607/1920 = 0.316 centered at 0.5
+    // x_min = (1 - 0.316) / 2 = 0.342, x_max = 0.658
+    const nx = (lm.x - 0.342) / 0.316;
+    const clampedX = Math.max(0, Math.min(1, nx));
+    return {
+      x: (1 - clampedX) * innerWidth,
+      y: lm.y * innerHeight
+    };
+  }
+  const vw = cam.videoWidth || 1920, vh = cam.videoHeight || 1080;
   const scale = Math.max(innerWidth / vw, innerHeight / vh);
   const dw = vw * scale, dh = vh * scale;
   const ox = (innerWidth - dw) / 2, oy = (innerHeight - dh) / 2;
@@ -1662,7 +1965,10 @@ function getCursor(i) {
                    y: innerHeight / 2, pinched: false, history: [],
                    palmOpen: false, softOpen: false, lastOpenT: 0,
                    lastSoftT: 0, wipe: null,
-                   pinchT: 0, ghost: false };
+                   pinchT: 0, ghost: false,
+                   pointFilter: new AdaptivePointFilter(GESTURE_PROFILE),
+                   pinchGate: new DynamicPinchGate(GESTURE_PROFILE),
+                   quality: 1, lastGoodT: 0, lastLandmarks: null };
   }
   return cursors[i];
 }
@@ -1788,7 +2094,9 @@ function endGrab(c, i, cur) {
       const gMs = performance.now() - (cur.grabT || 0);
       const gTrav = Math.hypot(cur.x - (c.tapX || cur.x),
                                cur.y - (c.tapY || cur.y));
-      if (gMs < 350 && gTrav < 24) killItem(c);
+      if (gMs < 350 &&
+          gTrav < Math.min(innerWidth, innerHeight) *
+            GESTURE_PROFILE.tapTravelViewport) killItem(c);
       c.barGrab = false;
     }
     // GESTURE v3 (2026-08-14, Jared's spec — "make it a single pinch"):
@@ -1801,7 +2109,9 @@ function endGrab(c, i, cur) {
       const tMs = performance.now() - (cur.grabT || 0);
       const tTrav = Math.hypot(cur.x - (c.tapX || cur.x),
                                cur.y - (c.tapY || cur.y));
-      if (tMs < 300 && tTrav < 26) openPanel(c);
+      if (tMs < 300 &&
+          tTrav < Math.min(innerWidth, innerHeight) *
+            GESTURE_PROFILE.tapTravelViewport) openPanel(c);
     }
     // GESTURE v3.1 (2026-08-14, the crush is DEAD — "that is happening
     // too naturally"): THE TAP IS SYMMETRIC — tap opens closed things,
@@ -1875,7 +2185,9 @@ function endGrab(c, i, cur) {
       // a drag's echoes have decayed by then. Speed bar at 1500,
       // thrown anywhere he likes — including hand to hand.
       {
-        if (pk > 1300 && lastS > pk * 0.4) {   // v3.9.25: throw bar eased
+        if (pk / Math.max(innerWidth, 1) >
+              GESTURE_PROFILE.throwViewportPerSec &&
+            lastS > pk * 0.4) {   // v3.9.25: throw bar eased
           // v16: on a note in SCROLL mode only a clearly HORIZONTAL fling
           // closes (vertical fast releases are just energetic scrolling);
           // in promoted MOVE mode (and on cards) any fling tosses it.
@@ -2056,42 +2368,71 @@ function physics(dt) {
 }
 
 async function boot() {
-  await pickInitialCam();
   const vision = await FilesetResolver.forVisionTasks(
     "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@0.10.14/wasm");
-  landmarker = await HandLandmarker.createFromOptions(vision, {
-    baseOptions: { modelAssetPath:
-      "https://storage.googleapis.com/mediapipe-models/hand_landmarker/hand_landmarker/float16/1/hand_landmarker.task",
-      delegate: "GPU" },
-    numHands: 2, runningMode: "VIDEO",
-    // phantom-hand filter (a real-room catch: debug showed a hand with
-    // none in frame — a busy background is full of hand-shaped clutter
-    // and the 0.5 defaults hallucinate there; a ghost hand can grab items
-    // and false-trigger gestures). 0.65 helped but the ghost
-    // survived → 0.7. Ease back toward 0.65 if real-hand pickup ever
-    // feels laggy; past 0.75 real tracking suffers.
-    minHandDetectionConfidence: 0.7,
-    // v3.9.9 (his blur diagnosis: fast hands smear and get DROPPED,
-    // and re-acquisition eats the frames that felt like grab-lag):
-    // KEEP-tracking eased to 0.5 so a latched hand rides through blur;
-    // fresh DETECTION stays 0.7 — the busy-background ghost wall holds.
-    minHandPresenceConfidence: 0.5 });
+  await initMultiCameraRig(vision);
   document.getElementById("boot").remove();
   await loadTree();
   spawnStage();
-  toast("barehands v1.0", 2000);  // build fingerprint
+  toast("barehands 3D spatial rig active", 2000);
   let lastT = performance.now();
 
   function frame(now) {
     const dt = Math.min((now - lastT) / 1000, 0.05); lastT = now;
-    if (cam.currentTime !== lastVideoTs) {
-      lastVideoTs = cam.currentTime;
-      const res = landmarker.detectForVideo(cam, now);
+
+    // Multi-camera concurrent capture & 3D consensus fusion
+    const cameraFrames = [];
+    let hasNewFrame = false;
+    for (const c of multiCamRig) {
+      if (c.video && c.video.readyState >= 2 && c.video.currentTime !== c.lastTs) {
+        c.lastTs = c.video.currentTime;
+        hasNewFrame = true;
+        try {
+          const res = c.landmarker.detectForVideo(c.video, now);
+          if (res && res.landmarks && res.landmarks.length > 0) {
+            const detections = res.landmarks.map((landmarks, index) => ({
+              landmarks, handedness: res.handednesses?.[index]
+            }));
+            cameraFrames.push({
+              cameraId: c.id,
+              detections
+            });
+            c.handCount = detections.length;
+          } else {
+            c.handCount = 0;
+          }
+        } catch (e) {
+          // Monotonic timestamp or frame skip guard
+        }
+      }
+    }
+
+    if (hasNewFrame || stableHands.tracks.size > 0) {
+      let fusedDetections = [];
+      if (cameraFrames.length > 1) {
+        fusedDetections = multiCamFusion.fuse(cameraFrames);
+      } else if (cameraFrames.length === 1) {
+        fusedDetections = cameraFrames[0].detections.map(d => ({
+          landmarks: d.landmarks,
+          handedness: d.handedness,
+          quality: 1,
+          sourceCameraCount: 1
+        }));
+      }
+
       const seen = new Set();
-      (res.landmarks || []).forEach((lms, i) => {
+      stableHands.update(fusedDetections, now).forEach(({ landmarks: lms, id: i, sourceCameraCount = 1 }) => {
         seen.add(i);
         const cur = getCursor(i);
+        cur.sourceCameraCount = sourceCameraCount;
+        if (cur.el) {
+          cur.el.classList.toggle("fused-3d", sourceCameraCount > 1);
+        }
         const tip = toScreen(lms[8]), thumb = toScreen(lms[4]);
+        const features = extractHandFeatures(lms, cur.lastLandmarks);
+        cur.lastLandmarks = lms.map(point => ({ ...point }));
+        cur.quality = features.quality;
+        if (features.quality >= GESTURE_PROFILE.minQuality) cur.lastGoodT = now;
         const span = Math.hypot(lms[0].x - lms[9].x, lms[0].y - lms[9].y);
         // v3.9.3: palm-axis upness (1 = fingers straight up) — the clap
         // only listens to prayer-vertical hands (Jared's rule)
@@ -2099,10 +2440,20 @@ async function boot() {
         const _w = toScreen(lms[0]), _m = toScreen(lms[9]);
         cur.wristX = _w.x; cur.wristY = _w.y;   // v3.9.7: the prayer read
         cur.mcpX = _m.x; cur.mcpY = _m.y;
-        const gap = Math.hypot(lms[4].x - lms[8].x, lms[4].y - lms[8].y);
-        const ratio = span > 0 ? gap / span : 1;
+        const ratio = features.ratio;
         const px = (tip.x + thumb.x) / 2, py = (tip.y + thumb.y) / 2;
-        cur.x += (px - cur.x) * 0.45; cur.y += (py - cur.y) * 0.45;
+        const filtered = cur.pointFilter.update(px, py, now);
+        const gated = cur.pinchGate.update({
+          ratio,
+          x: filtered.x / innerWidth,
+          y: filtered.y / innerHeight,
+          nowMs: now
+        });
+        cur.x = gated.outputPos.x * innerWidth;
+        cur.y = gated.outputPos.y * innerHeight;
+        cur.intentLocked = gated.intentLocked;
+        cur.closingRate = gated.closingRate;
+        cur.isClosingFast = gated.isClosingFast;
         cur.history.push({ x: cur.x, y: cur.y, t: now });
         if (cur.history.length > 10) cur.history.shift();   // v3.6: peak-fling window
 
@@ -2128,11 +2479,6 @@ async function boot() {
         // thumb theories are DEAD — the thumb gate was rejecting a
         // CORRECT pinch (t 0.58 vs its 0.6 bar), and occlusion blinded
         // the circle. The force-pull carry stays exempt via holdingI.
-        const fR = (t, m) => {
-          const td = Math.hypot(lms[t].x - W0.x, lms[t].y - W0.y);
-          const md = Math.hypot(lms[m].x - W0.x, lms[m].y - W0.y);
-          return md > 0 ? td / md : 9;
-        };
         // v3.8.2 — THE CONTRAST LAW (6 correct / 6 impostor corpus;
         // his low-arch correct pinch landed INSIDE an impostor's arch
         // range, ending absolute-height gating): the OK-sign's true
@@ -2142,8 +2488,8 @@ async function boot() {
         // every impostor incl. both near-pinches. Cut at 0.18, with a
         // 1.30 back-arch floor as the fist wall. The EMA sustained
         // read stays — lucky frames still buy nothing.
-        const f8v = fR(8, 5);
-        const backMean = (fR(12, 9) + fR(16, 13) + fR(20, 17)) / 3;
+        const f8v = features.f8;
+        const backMean = features.backMean;
         // v3.8.4 — TWO ORIENTATION REGIMES (his profiled-pinch sample:
         // aspect 1.63 / thumb-dist 1.18 vs 2.1-5.5 / 0.4-0.7 in ALL
         // frontal samples — a rotated palm compresses the arch ratios
@@ -2151,19 +2497,19 @@ async function boot() {
         // self-announces via palm aspect; in PROFILE the thumb is the
         // judge — a profile pinch rides it far off the knuckle row
         // (1.16+), every fist ever sampled wraps it tight (≤0.72).
-        const palmW = Math.hypot(lms[5].x - lms[17].x,
-                                 lms[5].y - lms[17].y);
-        const aspect = palmW > 0 ? span / palmW : 9;
-        const tRel = span > 0 ? Math.hypot(
-          lms[4].x - lms[13].x, lms[4].y - lms[13].y) / span : 0;
+        const aspect = features.aspect;
+        const tRel = features.thumbOffset;
         // v3.8.5 (his mid-aspect catch: a contrast-perfect pinch at
         // aspect 1.93 got shunted into the profile lane and judged by
         // the wrong rule — the regimes OVERLAP in the middle): EITHER
         // signature admits — contrast (frontal) OR far-thumb (profile).
         // Every correct sample passes at least one; every impostor
         // sampled passes neither.
-        const okBack = (backMean - f8v > 0.18 && backMean > 1.30) ||
-                       (aspect < 2.0 && tRel > 0.95);
+        const okBack =
+          (backMean - f8v > GESTURE_PROFILE.pinchContrast &&
+           backMean > GESTURE_PROFILE.pinchBackFloor) ||
+          (aspect < GESTURE_PROFILE.pinchProfileAspect &&
+           tRel > GESTURE_PROFILE.pinchProfileThumb);
         // v3.8.3 (his tap report: drag fixed, tap still flaky) — the
         // EMA charged too slow for a snap-tap (~6 frames): rate up to
         // 0.30 = three clean consecutive frames (~100ms) to trust,
@@ -2176,8 +2522,9 @@ async function boot() {
         // floor) enter immediately; the charged-EMA path still serves
         // hands whose approach was messy. Single lucky frames still
         // buy nothing.
-        const okNow = okBack && cur.okPrev;
-        cur.okPrev = okBack;
+        cur.okSince = okBack ? (cur.okSince || now) : 0;
+        const okNow = okBack &&
+          now - cur.okSince >= GESTURE_PROFILE.pinchIntentMs;
         // v3.9.8 (his mid-drag fling report: fast dragging smears the
         // fingers, the gap falsely inflates past the release bar for a
         // frame, and the phantom release fires at drag velocity = a
@@ -2194,12 +2541,17 @@ async function boot() {
         // v3.9.25 (still too sticky): the fast-release bar eased
         // 0.85→0.70 — blur under-reads a throwing hand's open, and the
         // 2-frame sustain already guards the phantom spikes
-        const relBar = hspd > 800 ? 0.70 : 0.55;
-        // v3.9.9: at speed, a release must be SEEN OPEN two frames
-        // running — a single blur spike can't fake a throw
+        const fastMotion =
+          hspd / Math.max(innerWidth, 1) >
+          GESTURE_PROFILE.fastMotionViewportPerSec;
+        const relBar = fastMotion
+          ? GESTURE_PROFILE.pinchFastReleaseGap
+          : GESTURE_PROFILE.pinchReleaseGap;
         const openRead = ratio >= relBar;
-        const relOk = hspd > 800 ? (openRead && cur.openPrev) : openRead;
-        cur.openPrev = openRead;
+        cur.openSince = openRead ? (cur.openSince || now) : 0;
+        const relOk = openRead && now - cur.openSince >=
+          (fastMotion ? GESTURE_PROFILE.fastPinchReleaseMs
+                      : GESTURE_PROFILE.pinchReleaseMs);
         // v3.9.12 (his second left-hand reading topped 0.28 — riding
         // whatever ceiling gets set): the gap number is so angle-
         // polluted that his TOUCHING left hand reads WIDER (0.24 med)
@@ -2228,15 +2580,21 @@ async function boot() {
         // (v3.9.31: the visibility clause is GONE — the hand model
         // carries the field but never populates it, so it read 0 on
         // every frame and declared every real hand a hallucination)
-        const handGarbage = aspect > 6;
+        const qualityBad = features.quality < GESTURE_PROFILE.minQuality;
+        const handGarbage = qualityBad &&
+          now - (cur.lastGoodT || 0) > GESTURE_PROFILE.dropoutGraceMs;
+        const canStartGesture = !qualityBad;
         if (handGarbage) cur.probKill = true;   // garbage drops mute taps
         // v3.9.32 (his final pinch sample: perfect signature, gap
         // 0.22-0.30 vs the 0.22 frontal ceiling): frontal eased to
         // 0.32 — the contrast law carries the touch duty.
         cur.pinched = handGarbage ? false
                     : wasPinched ? !relOk
-                                 : ratio < (aspect < 2.0 ? 0.38 : 0.32) &&
-                                   (okNow || cur.okEma > 0.55 || holdingI);
+                                : canStartGesture &&
+                                  ratio < (aspect < GESTURE_PROFILE.pinchProfileAspect
+                                    ? GESTURE_PROFILE.pinchGapProfile
+                                    : GESTURE_PROFILE.pinchGapFrontal) &&
+                                  (okNow || cur.okEma > 0.55 || holdingI);
         // v3.9.15 — PINCH PROBATION (his fold-through catch: closing a
         // hand into a curl passes THROUGH a lawful OK-sign for two
         // frames — index meets thumb while the back fingers are still
@@ -2245,12 +2603,20 @@ async function boot() {
         // 400ms; four straight signature-dead frames = silent drop.
         // Skipped at speed (fast-drag blur would false-trip it) and
         // for force-pull carries (holdingI grips are fist-legal).
-        if (cur.pinched && !wasPinched) { cur.badRun = 0; cur.probKill = false; }
+        if (cur.pinched && !wasPinched) {
+          cur.badSince = 0; cur.probKill = false;
+        }
         else if (cur.pinched && wasPinched &&
-                 now - (cur.pinchT || 0) < 400 && hspd < 600 && !holdingI) {
-          cur.badRun = okBack ? 0 : (cur.badRun || 0) + 1;
-          if (cur.badRun >= 4) { cur.pinched = false; cur.probKill = true; }
-        } else cur.badRun = 0;
+                 now - (cur.pinchT || 0) < 400 &&
+                 hspd / Math.max(innerWidth, 1) <
+                   GESTURE_PROFILE.fastMotionViewportPerSec &&
+                 !holdingI) {
+          cur.badSince = okBack ? 0 : (cur.badSince || now);
+          if (cur.badSince &&
+              now - cur.badSince >= GESTURE_PROFILE.pinchProbationMs) {
+            cur.pinched = false; cur.probKill = true;
+          }
+        } else cur.badSince = 0;
         if (cur.pinched) cur.lastPinchT = now;   // v3.9: clap disqualifier
         cur.el.classList.toggle("pinched", cur.pinched);
         cur.el.style.left = cur.x + "px"; cur.el.style.top = cur.y + "px";
@@ -2281,7 +2647,8 @@ async function boot() {
             const a = bh[0], b = bh[bh.length - 1], dt = (b.t - a.t) / 1000;
             if (dt > 0) born = Math.hypot(b.x - a.x, b.y - a.y) / dt;
           }
-          cur.ghost = born > 900;
+          cur.ghost = born / Math.max(innerWidth, 1) >
+            GESTURE_PROFILE.ghostBirthViewportPerSec;
           if (!cur.ghost) {
             const c = hitTest(cur);
             if (c && c.grabbedBy.length < 2 && !c.grabbedBy.includes(i))
@@ -2294,7 +2661,9 @@ async function boot() {
           // stay barren until re-pinched. Now it SELF-HEALS: the
           // moment the hand decelerates onto its target, the grab
           // fires — no release, no wait.
-          if (hspd < 500 && !items.some(k => k.grabbedBy.includes(i))) {
+          if (hspd / Math.max(innerWidth, 1) <
+                GESTURE_PROFILE.ghostRecoveryViewportPerSec &&
+              !items.some(k => k.grabbedBy.includes(i))) {
             cur.ghost = false;
             const c = hitTest(cur);
             if (c && c.grabbedBy.length < 2 && !c.grabbedBy.includes(i))
@@ -2396,18 +2765,8 @@ async function boot() {
           // orientation — angles survive the foreshortening that lies
           // about lengths. Distance ratios stay only as loose sanity
           // rails around his measured real-claw envelope.
-          const seg = (a, b) => {
-            const dx = lms[b].x - lms[a].x, dy = lms[b].y - lms[a].y,
-                  dz = (lms[b].z || 0) - (lms[a].z || 0);
-            const l = Math.hypot(dx, dy, dz) || 1;
-            return [dx / l, dy / l, dz / l];
-          };
-          const curl = (mcp, pip, dip, tip) => {
-            const p = seg(mcp, pip), d = seg(dip, tip);
-            return p[0] * d[0] + p[1] * d[1] + p[2] * d[2];
-          };
-          const c8 = curl(5, 6, 7, 8), c12 = curl(9, 10, 11, 12);
-          const c16 = curl(13, 14, 15, 16), c20 = curl(17, 18, 19, 20);
+          const c8 = features.c8, c12 = features.c12;
+          const c16 = features.c16, c20 = features.c20;
           // v3.5.3 — THE PINKY VERDICT (his real-claw s-sample killed
           // the spread theory: his hooks ride nearly together, s max
           // 0.30 vs the 0.32 floor). The discriminator was hiding in
@@ -2417,12 +2776,7 @@ async function boot() {
           // relaxed curl folds it (max -0.29). Index+middle+ring
           // folded, pinky OUT, mouth open = the claw's fingerprint.
           // (spread stays measured for the sampler, ungated.)
-          const tipGap = (a, b) => Math.hypot(
-            lms[a].x - lms[b].x, lms[a].y - lms[b].y,
-            (lms[a].z || 0) - (lms[b].z || 0));
-          const spread = span > 0
-            ? (tipGap(8, 12) + tipGap(12, 16) + tipGap(16, 20)) / (3 * span)
-            : 0;
+          const spread = features.spread;
           // v3.5.4 (his hand-at-the-lens catch: fingers pointed INTO
           // the camera have no readable geometry — z is weakest there
           // and the curls come back garbage that reads folded): the 2D
@@ -2472,18 +2826,20 @@ async function boot() {
           // the mouth must gape DELIBERATELY wide: floor 0.72 (the
           // twin impostor tops at 0.70; his widest claws ride 0.75+).
           // v3.9.20: "little bit bigger" — floor to 0.80
-          const claw = ratio > (inClaw ? 0.68 : 0.80) &&
+          const claw = canStartGesture &&
+                       ratio > (inClaw ? GESTURE_PROFILE.clawMouthHold
+                                      : GESTURE_PROFILE.clawMouthEnter) &&
                        ratio < (inClaw ? 1.8 : 1.45) &&
-                       c8    < (inClaw ? 0.8 : 0.6) &&
-                       c12   < (inClaw ? 0.6 : 0.35) &&
+                       c8    < (inClaw ? 0.8 : GESTURE_PROFILE.clawIndexEnter) &&
+                       c12   < (inClaw ? 0.6 : GESTURE_PROFILE.clawMiddleEnter) &&
                        // v3.9.21 (the camera-pointed hand gamed the
                        // MEAN: its foreshortened index read -0.53 and
                        // subsidized a dead-straight ring at 0.97 —
                        // real claws fold the ring ≤0.40): the ring
                        // votes alone now.
-                       c16   < (inClaw ? 0.75 : 0.55) &&
-                       cMean < (inClaw ? 0.55 : 0.30) &&
-                       c20   > (inClaw ? -0.35 : 0.1) &&
+                       c16   < (inClaw ? 0.75 : GESTURE_PROFILE.clawRingEnter) &&
+                       cMean < (inClaw ? 0.55 : GESTURE_PROFILE.clawMeanEnter) &&
+                       c20   > (inClaw ? -0.35 : GESTURE_PROFILE.clawPinkyEnter) &&
                        aspect > (inClaw ? 0.85 : 1.05) &&
                        h8 < (inClaw ? 1.6 : 1.5) &&
                        h12 < (inClaw ? 1.6 : 1.5) &&
@@ -2556,7 +2912,11 @@ async function boot() {
           };
           // v3.5: a one-frame tracking hiccup used to zero the pose
           // streak (the "only triggers sometimes") — now it decays
-          fp.pose = claw ? (fp.pose || 0) + 1 : Math.max(0, (fp.pose || 0) - 5);
+          fp.poseMs = claw
+            ? Math.min(1200, (fp.poseMs || 0) + dt * 1000)
+            : Math.max(0, (fp.poseMs || 0) - dt * 5000);
+          fp.pose = Math.round(fp.poseMs / (1000 / 30));
+          if (fp.poseMs === 0) fp.warned = false;
           if (fp.ph === 0) {
             // v7 THE TRANSITION LAW (2026-08-14, Jared's field find:
             // "anytime my hand was arched it thought I was summoning" —
@@ -2566,13 +2926,17 @@ async function boot() {
             // only after ~half a second of held pose (14 frames) so a
             // drifting arch never even starts the show. The strain, the
             // 2s law, and the plunge are untouched.
-            if (!heldAny && fp.pose >= 14 && !hitTest(cur) &&
+            if (!heldAny && fp.poseMs >= GESTURE_PROFILE.clawArmMs &&
+                !hitTest(cur) &&
                 now - (cur.lastOpenT || 0) < 900) {
               fp.ph = 1; fp.lost = 0; fp.tId = null;
-            } else if (fp.pose === 20 && !heldAny &&
+              fp.warned = false;
+            } else if (fp.poseMs >= GESTURE_PROFILE.clawArmMs + 180 &&
+                       !fp.warned && !heldAny &&
                        now - (cur.lastOpenT || 0) >= 900) {
               // the honest tell for a drift-in arch (once per run)
               toast("claw ignored — flash OPEN first, then claw", 1300);
+              fp.warned = true;
             }
           } else {
             if (claw) fp.lost = 0;
@@ -2750,12 +3114,15 @@ async function boot() {
 
         }
         if (dbg.style.display === "block")
-          dbg.textContent = `mode ${MODE}\nfps ${fps}\nhands ${res.landmarks.length}` +
+          dbg.textContent = `mode ${MODE}\nfps ${fps}\nhands ${stableHands.tracks.size} (cams: ${multiCamRig.length})` +
             `\npinch ${ratio.toFixed(2)} ${cur.pinched ? "CLOSED" : "open"}` +
             `\npalm ${cur.palmOpen ? "OPEN" : "-"}${cur.fpSplay ? " CLAW" : ""} pull ph${cur.fp ? cur.fp.ph : 0}` +
             `\n${cur.fpDbg || ""}` + (SAMPLED ? `\n${SAMPLED}` : "");
       });
-      Object.keys(cursors).map(Number).forEach(i => { if (!seen.has(i)) dropCursor(i); });
+      const activeHandIds = stableHands.activeIds();
+      Object.keys(cursors).map(Number).forEach(i => {
+        if (!activeHandIds.has(i)) dropCursor(i);
+      });
 
       // ---- GESTURE v3.9: THE DELIBERATE CLAP (Jared, after false
       // resets kept wiping his pinch tests: "that reset needs to be
@@ -2766,7 +3133,7 @@ async function boot() {
       // travel toward each other; one hand sweeping past a parked
       // hand is dead; (3) any hand that pinched in the last 800ms is
       // disqualified outright.
-      const cids = Object.keys(cursors);
+      const cids = [...seen].map(String);
       const clapFire = () => {
         loadTree().then(() => spawnStage(0.5, 0.42));   // the ring, center
         lastResetT = now; clap.hist.length = 0;
@@ -2794,14 +3161,18 @@ async function boot() {
           const bothOpen =
             (A.softOpen || now - (A.lastSoftT || 0) < 250) &&
             (B.softOpen || now - (B.lastSoftT || 0) < 250);
-          const bothUp = (A.handUp || 0) > 0.85 && (B.handUp || 0) > 0.85;
+          const bothUp =
+            (A.handUp || 0) > GESTURE_PROFILE.clapHandUp &&
+            (B.handUp || 0) > GESTURE_PROFILE.clapHandUp;
           clap.hist.push({ t: now, w: wristD,
                            q: (bothOpen && bothUp) ? 1 : 0 });
           while (clap.hist.length && now - clap.hist[0].t > 900)
             clap.hist.shift();
           const wasApart = clap.hist.some(
-            s => now - s.t <= 800 && s.w > innerWidth * 0.18);
-          if (wristD < innerWidth * 0.11 && mcpD < innerWidth * 0.09 &&
+            s => now - s.t <= 800 &&
+              s.w > innerWidth * GESTURE_PROFILE.clapApart);
+          if (wristD < innerWidth * GESTURE_PROFILE.clapWristClose &&
+              mcpD < innerWidth * GESTURE_PROFILE.clapKnuckleClose &&
               bothUp && bothOpen && wasApart && clapCool)
             clapFire();
         } else clap.hist.length = 0;
@@ -2812,7 +3183,7 @@ async function boot() {
         const last = clap.hist[clap.hist.length - 1];
         if (now - last.t < 200 && last.q && last.w < innerWidth * 0.16 &&
             clap.hist.some(s => last.t - s.t <= 800 &&
-                                s.w > innerWidth * 0.18) &&
+              s.w > innerWidth * GESTURE_PROFILE.clapApart) &&
             clapCool) clapFire();
         else clap.hist.length = 0;
       }
@@ -2872,7 +3243,18 @@ async function boot() {
       }
 
       frames++;
-      if (now - lastFpsTs > 1000) { fps = frames; frames = 0; lastFpsTs = now; }
+      if (now - lastFpsTs > 1000) {
+        fps = frames; frames = 0; lastFpsTs = now;
+        const statusEl = document.getElementById("hud-status");
+        if (statusEl && multiCamRig.length > 0) {
+          const hCount = stableHands.tracks.size;
+          if (multiCamRig.length > 1) {
+            statusEl.textContent = `3D FUSION: ${multiCamRig.length} CAMS (${hCount} HAND${hCount === 1 ? '' : 'S'} FUSED)`;
+          } else {
+            statusEl.textContent = `1 CAM ACTIVE (${hCount} HAND${hCount === 1 ? '' : 'S'})`;
+          }
+        }
+      }
     }
     physics(dt);
     renderModels();           // the 3D holograms draw their frames
